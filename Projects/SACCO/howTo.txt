@@ -1,0 +1,81 @@
+How to Use This Workflow
+1. Import into n8n:
+Copy the entire JSON code above
+
+In n8n, go to Workflows → Import from File → Paste the JSON
+
+The workflow will appear in your editor
+
+2. Configure Connections:
+This workflow requires these credentials (set them up in n8n Settings → Credentials):
+
+Credential	Purpose	Configuration Needed
+SMTP Email	Sends high-risk alerts	Your email server details
+Slack API	Sends medium-risk alerts	Slack bot token & channel
+Google Sheets	Logs monitoring data	Google OAuth2 credentials
+3. Customize for Your Sacco:
+Data Source Configuration:
+
+In the "Fetch Loan Data" node, replace the sample data with:
+
+Direct database queries (PostgreSQL/MySQL nodes)
+
+API calls to your loan management system
+
+Google Sheets if you use spreadsheets
+
+Risk Parameters Adjustment:
+Modify thresholds in the "Risk Assessment Engine" and "Calculate Risk Score" nodes:
+
+Days past due limits (currently 30+ days triggers alert)
+
+Debt-to-income ratio thresholds (currently >45%)
+
+Collateral coverage requirements (currently <120%)
+
+Alert Recipients:
+
+Update email addresses in "Send High Risk Alert" node
+
+Change Slack channel in "Send Slack Alert" node
+
+4. Key Features of This Workflow:
+Automated Monitoring: Runs hourly (adjust in Schedule Trigger)
+
+Risk Scoring Algorithm: Multi-factor risk calculation (0-100 score)
+
+Tiered Alerting:
+
+High Risk: Email alerts to management
+
+Medium Risk: Slack notifications to operations team
+
+Low Risk: Silent logging only
+
+Comprehensive Reporting: Generates JSON summary reports
+
+Audit Trail: Logs all assessments to Google Sheets
+
+5. Expected Output:
+The workflow generates:
+
+Email alerts for high-risk loans
+
+Slack notifications for medium-risk loans
+
+A downloadable JSON report with portfolio summary
+
+Google Sheets log for audit purposes
+
+🔧 Next Steps & Customization
+To make this workflow production-ready:
+
+Replace mock data with actual database/API connections
+
+Add your Sacco's specific risk policies to the scoring algorithm
+
+Test with a small subset of loans first
+
+Set up error handling (consider adding a "catch" node for failures)
+
+Add escalation logic for repeated high-risk cases

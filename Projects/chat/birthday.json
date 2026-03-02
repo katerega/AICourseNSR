@@ -1,0 +1,303 @@
+{
+  "name": "Birthday Offer Automation",
+  "nodes": [
+    {
+      "name": "Start",
+      "type": "n8n-nodes-base.start",
+      "position": [250, 300],
+      "parameters": {}
+    },
+    {
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [450, 300],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "days",
+              "minutesInterval": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Get Customers with Birthdays",
+      "type": "n8n-nodes-base.function",
+      "position": [650, 300],
+      "parameters": {
+        "functionCode": "// Query customers whose birthday is today\n// This is a template - replace with actual database/API query\n\nconst today = new Date();\nconst currentMonth = today.getMonth() + 1;\nconst currentDay = today.getDate();\n\n// Sample customer data - replace with your actual data source\nconst customers = [\n  { id: 1, name: 'John Doe', email: 'john@example.com', birthDate: '1990-03-15', phone: '+1234567890' },\n  { id: 2, name: 'Jane Smith', email: 'jane@example.com', birthDate: '1985-03-15', phone: '+0987654321' },\n  // ... more customers\n];\n\n// Filter customers with birthday today\nconst birthdayCustomers = customers.filter(customer => {\n  const birthDate = new Date(customer.birthDate);\n  return (birthDate.getMonth() + 1) === currentMonth && birthDate.getDate() === currentDay;\n});\n\nreturn birthdayCustomers.map(customer => ({\n  json: customer\n}));"
+      }
+    },
+    {
+      "name": "Generate Personalized Offer",
+      "type": "n8n-nodes-base.function",
+      "position": [850, 300],
+      "parameters": {
+        "functionCode": "// Generate personalized birthday offer for each customer\n\nitems.forEach(item => {\n  const customer = item.json;\n  const firstName = customer.name.split(' ')[0];\n  \n  // Generate unique coupon code\n  const couponCode = 'BDAY' + customer.id.toString().padStart(4, '0') + \n    Math.random().toString(36).substring(2, 6).toUpperCase();\n  \n  // Offer details\n  item.json.offer = {\n    couponCode: couponCode,\n    discountPercentage: 25,\n    validUntil: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 7 days\n    minimumPurchase: 50,\n    freeGift: 'Birthday Surprise Gift'\n  };\n  \n  // Personalize message\n  item.json.personalizedMessage = `Happy Birthday ${firstName}! Enjoy ${item.json.offer.discountPercentage}% off and a free ${item.json.offer.freeGift} with your next purchase. Use code: ${couponCode}`;\n  \n  // Email content\n  item.json.emailContent = {\n    subject: `🎂 Happy Birthday ${firstName}! Your Special Gift Inside`,    \n    body: `<h1>Happy Birthday ${firstName}! 🎉</h1>\n           <p>To celebrate your special day, we're giving you:</p>\n           <ul>\n             <li><strong>${item.json.offer.discountPercentage}% OFF</strong> your next purchase</li>\n             <li><strong>Free ${item.json.offer.freeGift}</strong> with orders over $${item.json.offer.minimumPurchase}</li>\n           </ul>\n           <p>Use code: <strong>${item.json.offer.couponCode}</strong></p>\n           <p>Valid until: ${item.json.offer.validUntil}</p>\n           <p>🎁 <a href=\"https://yourstore.com/birthday-offer\">Claim Your Birthday Offer</a></p>\n           <p>With love,<br>Your Store Team</p>`\n  };\n  \n  // SMS content\n  item.json.smsContent = `Happy Bday ${firstName}! ${item.json.offer.discountPercentage}% off + free gift on us! Code: ${couponCode}. Valid 7 days. Shop now: yourstore.com/bday`;\n});\n\nreturn items;"
+      }
+    },
+    {
+      "name": "Send Birthday Emails",
+      "type": "n8n-nodes-base.emailSend",
+      "position": [1050, 250],
+      "parameters": {
+        "fromEmail": "{{ $env.BIRTHDAY_SENDER_EMAIL }}",
+        "toEmail": "={{ $json.email }}",
+        "subject": "={{ $json.emailContent.subject }}",
+        "text": "={{ $json.personalizedMessage }}",
+        "html": "={{ $json.emailContent.body }}"
+      },
+      "credentials": {
+        "smtp": "smtpCredentials"
+      }
+    },
+    {
+      "name": "Send SMS Notifications",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1050, 350],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.twilio.com/2010-04-01/Accounts/{{ $env.TWILIO_ACCOUNT_SID }}/Messages.json",
+        "authentication": "basicAuth",
+        "sendBody": true,
+        "contentType": "application/x-www-form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "To",
+              "value": "={{ $json.phone }}"
+            },
+            {
+              "name": "From",
+              "value": "={{ $env.TWILIO_PHONE_NUMBER }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.smsContent }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpBasicAuth": {
+          "user": "={{ $env.TWILIO_ACCOUNT_SID }}",
+          "password": "={{ $env.TWILIO_AUTH_TOKEN }}"
+        }
+      }
+    },
+    {
+      "name": "Create Coupon in eCommerce",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [1250, 300],
+      "parameters": {
+        "method": "POST",
+        "url": "https://your-store.com/wp-json/wc/v3/coupons",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "contentType": "application/json",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "code",
+              "value": "={{ $json.offer.couponCode }}"
+            },
+            {
+              "name": "amount",
+              "value": "={{ $json.offer.discountPercentage }}"
+            },
+            {
+              "name": "discount_type",
+              "value": "percent"
+            },
+            {
+              "name": "description",
+              "value": "=Birthday Offer for {{ $json.name }}"
+            },
+            {
+              "name": "date_expires",
+              "value": "={{ $json.offer.validUntil }}"
+            },
+            {
+              "name": "minimum_amount",
+              "value": "={{ $json.offer.minimumPurchase }}"
+            },
+            {
+              "name": "individual_use",
+              "value": true
+            },
+            {
+              "name": "usage_limit",
+              "value": 1
+            },
+            {
+              "name": "email_restrictions",
+              "value": "={{ $json.email }}"
+            }
+          ]
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "Authorization",
+          "value": "Basic {{ $env.WOOCOMMERCE_API_KEY }}"
+        }
+      }
+    },
+    {
+      "name": "Log Birthday Offers Sent",
+      "type": "n8n-nodes-base.function",
+      "position": [1450, 300],
+      "parameters": {
+        "functionCode": "// Log successful birthday offers\nconst timestamp = new Date().toISOString();\n\nitems.forEach(item => {\n  console.log(`Birthday offer sent to ${item.json.name} (${item.json.email}) at ${timestamp}`);\n  console.log(`Coupon: ${item.json.offer.couponCode}`);\n});\n\n// Store in Google Sheets for tracking\nconst offersSent = items.map(item => ({\n  date: timestamp,\n  customerName: item.json.name,\n  customerEmail: item.json.email,\n  couponCode: item.json.offer.couponCode,\n  discount: item.json.offer.discountPercentage,\n  expiry: item.json.offer.validUntil\n}));\n\n// Add to items for next node\nitems.push({ json: { log: offersSent } });\n\nreturn items;"
+      }
+    },
+    {
+      "name": "Update Customer Database",
+      "type": "n8n-nodes-base.function",
+      "position": [1650, 300],
+      "parameters": {
+        "functionCode": "// Update customer record with birthday offer sent\n// This would typically update your CRM or database\n\nitems.forEach(item => {\n  if (item.json.id) {\n    // Example: Update customer record\n    // await updateCustomerRecord(item.json.id, { \n    //   lastBirthdayOffer: new Date().toISOString(),\n    //   birthdayCoupon: item.json.offer.couponCode\n    // });\n    \n    console.log(`Updated record for customer ID: ${item.json.id}`);\n  }\n});\n\nreturn items;"
+      }
+    },
+    {
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.errorTrigger",
+      "position": [850, 500],
+      "parameters": {},
+      "alwaysOutputData": false
+    },
+    {
+      "name": "Send Error Notification",
+      "type": "n8n-nodes-base.emailSend",
+      "position": [1050, 500],
+      "parameters": {
+        "fromEmail": "{{ $env.SYSTEM_EMAIL }}",
+        "toEmail": "{{ $env.ADMIN_EMAIL }}",
+        "subject": "🚨 Birthday Offer Automation Failed",
+        "text": "={{ $json.error.message }}"
+      },
+      "credentials": {
+        "smtp": "smtpCredentials"
+      }
+    }
+  ],
+  "connections": {
+    "Start": {
+      "main": [
+        [
+          {
+            "node": "Schedule Trigger",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Customers with Birthdays",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Customers with Birthdays": {
+      "main": [
+        [
+          {
+            "node": "Generate Personalized Offer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Personalized Offer": {
+      "main": [
+        [
+          {
+            "node": "Send Birthday Emails",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Send SMS Notifications",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Coupon in eCommerce",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Birthday Emails": {
+      "main": [
+        [
+          {
+            "node": "Log Birthday Offers Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send SMS Notifications": {
+      "main": [
+        [
+          {
+            "node": "Log Birthday Offers Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Coupon in eCommerce": {
+      "main": [
+        [
+          {
+            "node": "Log Birthday Offers Sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Birthday Offers Sent": {
+      "main": [
+        [
+          {
+            "node": "Update Customer Database",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Error Handler": {
+      "main": [
+        [
+          {
+            "node": "Send Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {}
+}

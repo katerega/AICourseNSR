@@ -1,0 +1,13 @@
+└─$ ls
+agent1
+AIagent2LeadGen
+AIagent3ContentGen
+AIagent4Infographs
+AIagentClientIntake
+AIagentClientSUpport
+AIagentForOnboardingCLients
+AIagentPlaceTrades
+AIagentSEO
+AIagentSocialMediaAccountManagment
+AIagentSocialMediaPosting
+

@@ -1,0 +1,175 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hour",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Cron Trigger - Hourly Check",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "SELECT * FROM appointments WHERE appointment_date BETWEEN now() AND now() + interval '1 day' AND reminder_sent = false;",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-query",
+      "name": "Postgres - Query Appointments",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {},
+      "id": "for-each",
+      "name": "For Each Appointment",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "clinic-check",
+              "leftValue": "={{ $json.clinic_id }}",
+              "rightValue": "1",
+              "operator": {
+                "type": "equal",
+                "operation": "equal"
+              }
+            }
+          ]
+        }
+      },
+      "id": "switch-clinic",
+      "name": "Check Clinic ID",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "from": "{{ $env.WHATSAPP_CLINIC1_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "Hello {{ $json.patient_name }}, this is a reminder for your appointment at Clinic A on {{ $json.appointment_date }} at {{ $json.appointment_time }}. Please arrive 15 minutes early. Reply STOP to opt-out.",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-clinic1",
+      "name": "WhatsApp - Clinic 1",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 100]
+    },
+    {
+      "parameters": {
+        "from": "{{ $env.WHATSAPP_CLINIC2_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "Hi {{ $json.patient_name }}, reminder: Your appointment at Clinic B is scheduled for {{ $json.appointment_date }} at {{ $json.appointment_time }}. Call us if you need to reschedule.",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-clinic2",
+      "name": "WhatsApp - Clinic 2",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "from": "{{ $env.SMS_CLINIC3_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "Appointment Reminder: {{ $json.patient_name }}, your visit to Clinic C is on {{ $json.appointment_date }} at {{ $json.appointment_time }}.",
+        "additionalFields": {}
+      },
+      "id": "sms-clinic3",
+      "name": "SMS - Clinic 3",
+      "type": "n8n-nodes-base.twilioSms",
+      "typeVersion": 2,
+      "position": [1050, 500]
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "UPDATE appointments SET reminder_sent = true, reminder_sent_at = now() WHERE appointment_id = {{ $json.appointment_id }};",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-update",
+      "name": "Postgres - Update Sent Status",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1250, 300]
+    },
+    {
+      "parameters": {},
+      "id": "no-appointments",
+      "name": "No Appointments Found",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 500]
+    }
+  ],
+  "connections": {
+    "Cron Trigger - Hourly Check": {
+      "main": [[{ "node": "Postgres - Query Appointments", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Query Appointments": {
+      "main": [[{ "node": "For Each Appointment", "type": "main", "index": 0 }]]
+    },
+    "For Each Appointment": {
+      "main": [[{ "node": "Check Clinic ID", "type": "main", "index": 0 }]]
+    },
+    "Check Clinic ID": {
+      "main": [
+        [
+          { "node": "WhatsApp - Clinic 1", "type": "main", "index": 0 },
+          { "node": "WhatsApp - Clinic 2", "type": "main", "index": 1 },
+          { "node": "SMS - Clinic 3", "type": "main", "index": 2 }
+        ],
+        [{ "node": "No Appointments Found", "type": "main", "index": 0 }]
+      ]
+    },
+    "WhatsApp - Clinic 1": {
+      "main": [[{ "node": "Postgres - Update Sent Status", "type": "main", "index": 0 }]]
+    },
+    "WhatsApp - Clinic 2": {
+      "main": [[{ "node": "Postgres - Update Sent Status", "type": "main", "index": 0 }]]
+    },
+    "SMS - Clinic 3": {
+      "main": [[{ "node": "Postgres - Update Sent Status", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "versionId": "1",
+  "active": true
+}

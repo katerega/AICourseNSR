@@ -1,0 +1,140 @@
+{
+  "fields": {
+    "leadId": {
+      "displayName": "Lead ID",
+      "type": "string",
+      "description": "A unique identifier for the lead.",
+      "required": true
+    },
+    "timestamp": {
+      "displayName": "Timestamp",
+      "type": "string",
+      "description": "The date and time the lead was created.",
+      "required": true
+    },
+    "contactInfo": {
+      "displayName": "Contact Information",
+      "type": "object",
+      "description": "Personal contact details of the lead.",
+      "properties": {
+        "firstName": {
+          "displayName": "First Name",
+          "type": "string",
+          "description": "The lead's first name."
+        },
+        "lastName": {
+          "displayName": "Last Name",
+          "type": "string",
+          "description": "The lead's last name."
+        },
+        "email": {
+          "displayName": "Email",
+          "type": "string",
+          "description": "A valid email address for the lead.",
+          "required": true
+        },
+        "phone": {
+          "displayName": "Phone",
+          "type": "string",
+          "description": "Primary phone number."
+        }
+      }
+    },
+    "source": {
+      "displayName": "Lead Source",
+      "type": "object",
+      "description": "Information on how this lead was acquired.",
+      "properties": {
+        "channel": {
+          "displayName": "Channel",
+          "type": "options",
+          "options": [
+            { "name": "Website Form", "value": "Website Form" },
+            { "name": "Social Media", "value": "Social Media" },
+            { "name": "Email Campaign", "value": "Email Campaign" },
+            { "name": "Event/Pop-up", "value": "Event/Pop-up" },
+            { "name": "Influencer/Referral", "value": "Influencer/Referral" },
+            { "name": "Paid Ad", "value": "Paid Ad" },
+            { "name": "Other", "value": "Other" }
+          ],
+          "default": "Website Form",
+          "description": "The primary marketing channel that generated the lead.",
+          "required": true
+        },
+        "campaign": {
+          "displayName": "Campaign",
+          "type": "string",
+          "description": "Specific campaign name, e.g., 'Spring Sale Instagram Ad'."
+        },
+        "leadMagnet": {
+          "displayName": "Lead Magnet",
+          "type": "string",
+          "description": "The incentive offered, such as '15% Discount Code', 'Free Style Guide Ebook', or 'Early Access'."
+        }
+      }
+    },
+    "clothingInterest": {
+      "displayName": "Clothing Interest",
+      "type": "object",
+      "description": "Details about the lead's preferences related to your clothing business.",
+      "properties": {
+        "interestedCategories": {
+          "displayName": "Interested Categories",
+          "type": "multiOptions",
+          "options": [
+            { "name": "Men's Wear", "value": "mens" },
+            { "name": "Women's Wear", "value": "womens" },
+            { "name": "Activewear", "value": "activewear" },
+            { "name": "Formal Wear", "value": "formal" },
+            { "name": "Accessories", "value": "accessories" },
+            { "name": "Sustainable/Eco-Friendly", "value": "sustainable" }
+          ],
+          "description": "Product categories the lead has shown interest in."
+        },
+        "sizePreference": {
+          "displayName": "Size Preference",
+          "type": "string",
+          "description": "e.g., S, M, L, XL."
+        },
+        "styleNotes": {
+          "displayName": "Style Notes",
+          "type": "string",
+          "description": "Any self-described style preferences (e.g., 'minimalist', 'bohemian')."
+        }
+      }
+    },
+    "qualification": {
+      "displayName": "Lead Qualification",
+      "type": "object",
+      "description": "Information used to prioritize and score the lead.",
+      "properties": {
+        "status": {
+          "displayName": "Status",
+          "type": "options",
+          "options": [
+            { "name": "New", "value": "new" },
+            { "name": "Contacted", "value": "contacted" },
+            { "name": "Qualified", "value": "qualified" },
+            { "name": "Nurturing", "value": "nurturing" },
+            { "name": "Converted", "value": "converted" },
+            { "name": "Unqualified", "value": "unqualified" }
+          ],
+          "default": "new",
+          "description": "The current stage of the lead in the sales process.",
+          "required": true
+        },
+        "leadScore": {
+          "displayName": "Lead Score",
+          "type": "number",
+          "description": "A numerical score (0-100) based on engagement and fit.",
+          "default": 0
+        },
+        "notes": {
+          "displayName": "Internal Notes",
+          "type": "string",
+          "description": "Any internal notes from sales or customer service interactions."
+        }
+      }
+    }
+  }
+}

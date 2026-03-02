@@ -1,0 +1,189 @@
+{
+  "name": "SACCO Loan Recovery + Risk Scoring",
+  "nodes": [
+    {
+      "parameters": {
+        "triggerTimes": {
+          "item": [
+            {
+              "mode": "everyDay",
+              "hour": 8,
+              "minute": 0
+            }
+          ]
+        }
+      },
+      "id": "Cron",
+      "name": "Daily Trigger",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "sheetId": "YOUR_GOOGLE_SHEET_ID",
+        "range": "Loans!A1:Z1000"
+      },
+      "id": "GoogleSheets",
+      "name": "Fetch Loans",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 1,
+      "position": [400, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YOUR_CREDENTIAL_ID",
+          "name": "Google Sheets Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "functionCode": "const today = new Date();\n\nreturn items.map(item => {\n const dueDate = new Date(item.json.due_date);\n const loanAmount = parseFloat(item.json.loan_amount);\n const income = parseFloat(item.json.monthly_income);\n const installment = parseFloat(item.json.monthly_installment);\n\n const daysOverdue = Math.floor((today - dueDate) / (1000 * 60 * 60 * 24));\n\n // Risk Scoring Logic\n let riskScore = 0;\n\n const loanToIncome = loanAmount / income;\n if (loanToIncome > 5) riskScore += 30;\n if (installment > income * 0.5) riskScore += 30;\n if (daysOverdue > 7) riskScore += 20;\n if (daysOverdue > 14) riskScore += 20;\n\n let riskLevel = \"Low\";\n if (riskScore >= 40) riskLevel = \"Medium\";\n if (riskScore >= 70) riskLevel = \"High\";\n\n item.json.days_overdue = daysOverdue;\n item.json.risk_score = riskScore;\n item.json.risk_level = riskLevel;\n\n return item;\n});"
+      },
+      "id": "Function",
+      "name": "Calculate Risk Score",
+      "type": "n8n-nodes-base.function",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.days_overdue}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "id": "IfOverdue",
+      "name": "Is Overdue?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "from": "YOUR_TWILIO_NUMBER",
+        "to": "={{$json.phone}}",
+        "message": "Dear {{$json.borrower_name}}, your loan installment is {{$json.days_overdue}} days overdue. Please make payment immediately to avoid penalties."
+      },
+      "id": "TwilioBorrower",
+      "name": "Notify Borrower",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1000, 200],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json.days_overdue}}",
+              "operation": "larger",
+              "value2": 7
+            }
+          ]
+        }
+      },
+      "id": "If7Days",
+      "name": "Over 7 Days?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1000, 400]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "from": "YOUR_TWILIO_NUMBER",
+        "to": "={{$json.guarantor_phone}}",
+        "message": "You guaranteed {{$json.borrower_name}}'s loan which is now {{$json.days_overdue}} days overdue. Please contact the borrower."
+      },
+      "id": "TwilioGuarantor",
+      "name": "Notify Guarantor",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1200, 400],
+      "credentials": {
+        "twilioApi": {
+          "id": "YOUR_TWILIO_CREDENTIAL_ID",
+          "name": "Twilio Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Daily Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Loans",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Loans": {
+      "main": [
+        [
+          {
+            "node": "Calculate Risk Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Risk Score": {
+      "main": [
+        [
+          {
+            "node": "Is Overdue?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Overdue?": {
+      "main": [
+        [
+          {
+            "node": "Notify Borrower",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Over 7 Days?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Over 7 Days?": {
+      "main": [
+        [
+          {
+            "node": "Notify Guarantor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -1,0 +1,436 @@
+{
+  "name": "WF1 - Loan Monitoring Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "minutesInterval": 60
+            }
+          ]
+        }
+      },
+      "id": "schedule-trigger",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [250, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "jsCode": "// Fetch loan data from database or API\n// This is a mock implementation - replace with actual API/database call\nconst loans = [\n  {\n    loanId: 'LN-2024-001',\n    memberId: 'M-1001',\n    memberName: 'John Doe',\n    loanAmount: 500000,\n    outstandingBalance: 350000,\n    interestRate: 12.5,\n    installmentAmount: 25000,\n    dueDate: '2024-06-15',\n    lastPaymentDate: '2024-05-10',\n    daysPastDue: 0,\n    debtToIncomeRatio: 38,\n    loanPurpose: 'Business Expansion',\n    collateralValue: 750000,\n    riskCategory: 'Low',\n    status: 'Active'\n  },\n  {\n    loanId: 'LN-2024-002',\n    memberId: 'M-1002',\n    memberName: 'Jane Smith',\n    loanAmount: 300000,\n    outstandingBalance: 295000,\n    interestRate: 14.0,\n    installmentAmount: 15000,\n    dueDate: '2024-05-25',\n    lastPaymentDate: '2024-04-25',\n    daysPastDue: 21,\n    debtToIncomeRatio: 52,\n    loanPurpose: 'Medical Emergency',\n    collateralValue: 400000,\n    riskCategory: 'Medium',\n    status: 'Active'\n  },\n  {\n    loanId: 'LN-2024-003',\n    memberId: 'M-1003',\n    memberName: 'Robert Johnson',\n    loanAmount: 1000000,\n    outstandingBalance: 980000,\n    interestRate: 15.5,\n    installmentAmount: 45000,\n    dueDate: '2024-04-10',\n    lastPaymentDate: '2024-03-10',\n    daysPastDue: 62,\n    debtToIncomeRatio: 67,\n    loanPurpose: 'Real Estate',\n    collateralValue: 1200000,\n    riskCategory: 'High',\n    status: 'Active'\n  }\n];\n\n// Add timestamp for monitoring run\nconst monitoringRun = {\n  timestamp: new Date().toISOString(),\n  totalLoans: loans.length,\n  loans: loans\n};\n\nreturn [\n  {\n    json: monitoringRun\n  }\n];"
+      },
+      "id": "fetch-loan-data",
+      "name": "Fetch Loan Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "days-past-due",
+              "leftValue": "={{ $json.loans[$index].daysPastDue }}",
+              "rightValue": "30",
+              "operator": {
+                "type": "number",
+                "operation": "larger"
+              }
+            },
+            {
+              "id": "debt-to-income",
+              "leftValue": "={{ $json.loans[$index].debtToIncomeRatio }}",
+              "rightValue": "45",
+              "operator": {
+                "type": "number",
+                "operation": "larger"
+              }
+            },
+            {
+              "id": "collateral-coverage",
+              "leftValue": "={{ ($json.loans[$index].collateralValue / $json.loans[$index].outstandingBalance) * 100 }}",
+              "rightValue": "120",
+              "operator": {
+                "type": "number",
+                "operation": "smaller"
+              }
+            }
+          ],
+          "combinator": "or"
+        },
+        "options": {}
+      },
+      "id": "risk-assessment",
+      "name": "Risk Assessment Engine",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Categorize loan risk based on multiple factors\nconst loan = $input.first().json.loans[$index];\n\n// Initialize risk score (0-100, higher = more risky)\nlet riskScore = 0;\nlet riskCategory = 'Low';\nlet actionsRequired = [];\nlet priority = 'Low';\n\n// 1. Payment Delinquency Scoring\nif (loan.daysPastDue > 60) {\n  riskScore += 40;\n  actionsRequired.push('Immediate collection action required');\n} else if (loan.daysPastDue > 30) {\n  riskScore += 25;\n  actionsRequired.push('Follow-up payment reminder');\n} else if (loan.daysPastDue > 15) {\n  riskScore += 10;\n  actionsRequired.push('Send payment reminder');\n}\n\n// 2. Debt-to-Income Ratio Scoring\nif (loan.debtToIncomeRatio > 60) {\n  riskScore += 35;\n  actionsRequired.push('Review member income sources');\n} else if (loan.debtToIncomeRatio > 45) {\n  riskScore += 20;\n  actionsRequired.push('Monitor income changes');\n} else if (loan.debtToIncomeRatio > 35) {\n  riskScore += 10;\n}\n\n// 3. Collateral Coverage Scoring\nconst coverageRatio = (loan.collateralValue / loan.outstandingBalance) * 100;\nif (coverageRatio < 100) {\n  riskScore += 30;\n  actionsRequired.push('Request additional collateral');\n} else if (coverageRatio < 120) {\n  riskScore += 15;\n  actionsRequired.push('Monitor collateral value');\n}\n\n// 4. Loan Concentration Scoring\n// Assuming large loans are riskier\nif (loan.outstandingBalance > 500000) {\n  riskScore += 15;\n}\n\n// Determine final risk category\nif (riskScore >= 60) {\n  riskCategory = 'High';\n  priority = 'High';\n} else if (riskScore >= 30) {\n  riskCategory = 'Medium';\n  priority = 'Medium';\n}\n\n// Add monitoring metadata\nconst assessment = {\n  loanId: loan.loanId,\n  memberId: loan.memberId,\n  memberName: loan.memberName,\n  riskScore: riskScore,\n  riskCategory: riskCategory,\n  previousRiskCategory: loan.riskCategory,\n  riskChanged: riskCategory !== loan.riskCategory,\n  assessmentDate: new Date().toISOString(),\n  riskFactors: {\n    daysPastDue: loan.daysPastDue,\n    debtToIncomeRatio: loan.debtToIncomeRatio,\n    collateralCoverage: coverageRatio.toFixed(2) + '%',\n    outstandingBalance: loan.outstandingBalance\n  },\n  actionsRequired: actionsRequired,\n  priority: priority,\n  followUpDeadline: riskCategory === 'High' ? \n    'Immediate' : \n    riskCategory === 'Medium' ? \n    'Within 3 days' : \n    'Next routine check'\n};\n\n// Update the loan object with new risk assessment\nloan.riskCategory = riskCategory;\nloan.lastAssessmentDate = new Date().toISOString();\nloan.priority = priority;\n\nreturn [\n  {\n    json: {\n      originalLoan: loan,\n      riskAssessment: assessment\n    }\n  }\n];"
+      },
+      "id": "calculate-risk-score",
+      "name": "Calculate Risk Score",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [850, 250]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "high-risk-branch",
+      "name": "High Risk Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 150]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "medium-risk-branch",
+      "name": "Medium Risk Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 300]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "low-risk-branch",
+      "name": "Low Risk Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1050, 450]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json.riskAssessment.riskCategory }}",
+              "operation": "equals",
+              "value2": "High"
+            }
+          ]
+        }
+      },
+      "id": "risk-router",
+      "name": "Route by Risk Category",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [900, 450]
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "id": "to",
+              "name": "to",
+              "value": "risk.team@sacco.example.com,management@sacco.example.com"
+            },
+            {
+              "id": "subject",
+              "name": "subject",
+              "value": "🚨 HIGH RISK ALERT: Loan {{ $json.riskAssessment.loanId }} - {{ $json.riskAssessment.memberName }}"
+            },
+            {
+              "id": "body",
+              "name": "body",
+              "value": "⚠️ **IMMEDIATE ATTENTION REQUIRED** ⚠️\n\n**Loan Details:**\n- Loan ID: {{ $json.riskAssessment.loanId }}\n- Member: {{ $json.riskAssessment.memberName }} ({{ $json.riskAssessment.memberId }})\n- Outstanding Balance: KES {{ $json.originalLoan.outstandingBalance.toLocaleString() }}\n- Days Past Due: {{ $json.originalLoan.daysPastDue }} days\n\n**Risk Assessment:**\n- Risk Score: {{ $json.riskAssessment.riskScore }}/100\n- Risk Category: {{ $json.riskAssessment.riskCategory }}\n- Previous Category: {{ $json.riskAssessment.previousRiskCategory }}\n\n**Risk Factors:**\n{{ $json.riskAssessment.riskFactors | json }}\n\n**Required Actions:**\n{{#each $json.riskAssessment.actionsRequired}}\n• {{this}}\n{{/each}}\n\n**Follow-up Deadline:** {{ $json.riskAssessment.followUpDeadline }}\n\n---\nThis alert was generated by Loan Monitoring Engine WF1 on {{ $json.riskAssessment.assessmentDate }}"
+            }
+          ]
+        },
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "id": "send-high-risk-alert",
+      "name": "Send High Risk Alert",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 1,
+      "position": [1250, 150],
+      "credentials": {
+        "smtp": {
+          "id": "1",
+          "name": "SMTP Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "manual",
+        "fields": {
+          "values": [
+            {
+              "id": "channel",
+              "name": "channel",
+              "value": "loan-monitoring-alerts"
+            },
+            {
+              "id": "text",
+              "name": "text",
+              "value": "🟡 **Medium Risk Loan Identified**\n\n*Loan ID:* {{ $json.riskAssessment.loanId }}\n*Member:* {{ $json.riskAssessment.memberName }}\n*Risk Score:* {{ $json.riskAssessment.riskScore }}\n*Days Past Due:* {{ $json.originalLoan.daysPastDue }} days\n*Required Actions:* {{ $json.riskAssessment.actionsRequired.length }}\n\nPlease review within 3 days."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "send-slack-alert",
+      "name": "Send Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2,
+      "position": [1250, 300],
+      "credentials": {
+        "slackApi": {
+          "id": "1",
+          "name": "Slack Account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Generate monitoring report\nconst riskAssessment = $input.first().json.riskAssessment;\nconst loan = $input.first().json.originalLoan;\n\n// Create report entry\nconst reportEntry = {\n  timestamp: new Date().toISOString(),\n  monitoringRunId: 'MON-' + Date.now(),\n  loanId: riskAssessment.loanId,\n  memberId: riskAssessment.memberId,\n  riskScore: riskAssessment.riskScore,\n  riskCategory: riskAssessment.riskCategory,\n  previousRiskCategory: riskAssessment.previousRiskCategory,\n  riskChanged: riskAssessment.riskChanged,\n  actionsTriggered: riskAssessment.actionsRequired,\n  priority: riskAssessment.priority,\n  details: {\n    outstandingBalance: loan.outstandingBalance,\n    daysPastDue: loan.daysPastDue,\n    debtToIncomeRatio: loan.debtToIncomeRatio,\n    collateralValue: loan.collateralValue\n  }\n};\n\n// Store in Google Sheets (example)\n// In practice, you would use Google Sheets node\n// This returns data for the next node\nreturn [\n  {\n    json: reportEntry,\n    pairedItem: {\n      item: 0\n    }\n  }\n];"
+      },
+      "id": "log-monitoring-event",
+      "name": "Log Monitoring Event",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1250, 450]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Aggregate all monitoring results\nconst allResults = $input.all();\n\nlet highRiskCount = 0;\nlet mediumRiskCount = 0;\nlet lowRiskCount = 0;\nlet totalExposure = 0;\nconst changedLoans = [];\nconst highRiskLoans = [];\n\nallResults.forEach(result => {\n  const assessment = result.json.riskAssessment;\n  const loan = result.json.originalLoan;\n  \n  totalExposure += loan.outstandingBalance;\n  \n  if (assessment.riskCategory === 'High') {\n    highRiskCount++;\n    highRiskLoans.push({\n      loanId: assessment.loanId,\n      memberName: assessment.memberName,\n      riskScore: assessment.riskScore,\n      outstandingBalance: loan.outstandingBalance\n    });\n  } else if (assessment.riskCategory === 'Medium') {\n    mediumRiskCount++;\n  } else {\n    lowRiskCount++;\n  }\n  \n  if (assessment.riskChanged) {\n    changedLoans.push({\n      loanId: assessment.loanId,\n      from: assessment.previousRiskCategory,\n      to: assessment.riskCategory\n    });\n  }\n});\n\n// Generate executive summary\nconst summaryReport = {\n  reportDate: new Date().toISOString(),\n  monitoringPeriod: 'Daily Monitoring Run',\n  totalLoansAssessed: allResults.length,\n  riskDistribution: {\n    highRisk: highRiskCount,\n    mediumRisk: mediumRiskCount,\n    lowRisk: lowRiskCount\n  },\n  totalExposure: totalExposure,\n  averageRiskScore: (allResults.reduce((sum, r) => sum + r.json.riskAssessment.riskScore, 0) / allResults.length).toFixed(2),\n  riskCategoryChanges: changedLoans.length,\n  highRiskExposure: highRiskLoans.reduce((sum, loan) => sum + loan.outstandingBalance, 0),\n  details: {\n    highRiskLoans: highRiskLoans,\n    changedLoans: changedLoans\n  },\n  recommendations: [\n    highRiskCount > 2 ? 'Schedule emergency credit committee meeting' : null,\n    mediumRiskCount > 5 ? 'Increase monitoring frequency for medium-risk portfolio' : null,\n    totalExposure > 5000000 ? 'Review portfolio concentration limits' : null\n  ].filter(r => r !== null)\n};\n\n// Format as downloadable JSON\nconst jsonContent = JSON.stringify(summaryReport, null, 2);\nconst fileName = `loan-monitoring-report-${new Date().toISOString().split('T')[0]}.json`;\n\nreturn [\n  {\n    json: summaryReport,\n    binary: {\n      data: {\n        data: Buffer.from(jsonContent).toString('base64'),\n        mimeType: 'application/json',\n        fileName: fileName\n      }\n    }\n  }\n];"
+      },
+      "id": "generate-summary-report",
+      "name": "Generate Summary Report",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [1450, 300]
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "columns": {
+          "values": [
+            {
+              "columnId": "timestamp"
+            },
+            {
+              "columnId": "loanId"
+            },
+            {
+              "columnId": "memberId"
+            },
+            {
+              "columnId": "riskScore"
+            },
+            {
+              "columnId": "riskCategory"
+            },
+            {
+              "columnId": "previousRiskCategory"
+            },
+            {
+              "columnId": "actionsTriggered"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "update-monitoring-log",
+      "name": "Update Monitoring Log",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 3,
+      "position": [1650, 300],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "1",
+          "name": "Google Sheets Account"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Loan Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Loan Data": {
+      "main": [
+        [
+          {
+            "node": "Risk Assessment Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Risk Assessment Engine": {
+      "main": [
+        [
+          {
+            "node": "Calculate Risk Score",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Risk Score": {
+      "main": [
+        [
+          {
+            "node": "Route by Risk Category",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route by Risk Category": {
+      "main": [
+        [
+          {
+            "node": "High Risk Handler",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Medium Risk Handler",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Low Risk Handler",
+            "type": "main",
+            "index": 2
+          }
+        ]
+      ]
+    },
+    "High Risk Handler": {
+      "main": [
+        [
+          {
+            "node": "Send High Risk Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Monitoring Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Medium Risk Handler": {
+      "main": [
+        [
+          {
+            "node": "Send Slack Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Log Monitoring Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Low Risk Handler": {
+      "main": [
+        [
+          {
+            "node": "Log Monitoring Event",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send High Risk Alert": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Slack Alert": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Monitoring Event": {
+      "main": [
+        [
+          {
+            "node": "Generate Summary Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Summary Report": {
+      "main": [
+        [
+          {
+            "node": "Update Monitoring Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "pinData": {},
+  "versionId": "1.0",
+  "triggerCount": 1,
+  "tags": [],
+  "active": true
+}

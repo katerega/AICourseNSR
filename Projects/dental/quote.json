@@ -1,0 +1,230 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "day",
+              "hoursInterval": 24,
+              "minutesInterval": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-trigger",
+      "name": "Daily Trigger - 9 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300],
+      "webhookId": ""
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "SELECT \n  q.quote_id,\n  q.patient_id,\n  q.patient_name,\n  q.patient_phone,\n  q.quote_amount,\n  q.treatment_description,\n  q.created_at as quote_date,\n  q.followup_stage,\n  q.last_followup_date,\n  q.status,\n  (CURRENT_DATE - q.created_at::date) as days_since_quote\nFROM quotes q\nWHERE q.status = 'considering' \n  AND q.followup_stage < 3\n  AND (q.last_followup_date IS NULL OR \n       q.last_followup_date < CURRENT_DATE - INTERVAL '1 day' * CASE \n         WHEN q.followup_stage = 0 THEN 2\n         WHEN q.followup_stage = 1 THEN 1\n         ELSE 0 END\n      )\nORDER BY q.created_at DESC;",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-get-quotes",
+      "name": "Postgres - Get Considering Quotes",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {},
+      "id": "for-each-patient",
+      "name": "For Each Patient",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "stage-check",
+              "leftValue": "={{ $json.followup_stage }}",
+              "rightValue": "0",
+              "operator": {
+                "type": "equal",
+                "operation": "equal"
+              }
+            }
+          ]
+        }
+      },
+      "id": "switch-followup-stage",
+      "name": "Check Follow-Up Stage",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "from": "={{ $env.WHATSAPP_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Hi ${$json.patient_name}, this is a follow-up regarding your treatment quote of $${$json.quote_amount} for ${$json.treatment_description}. We sent this quote on ${$json.quote_date}. Let us know if you have any questions! Reply BOOK to schedule or STOP to unsubscribe.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-stage0",
+      "name": "WhatsApp - Stage 0 (Day 1)",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 100]
+    },
+    {
+      "parameters": {},
+      "id": "wait-stage0",
+      "name": "Wait 2 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 2,
+      "position": [1250, 100]
+    },
+    {
+      "parameters": {
+        "from": "={{ $env.WHATSAPP_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Hi ${$json.patient_name}, just following up on your $${$json.quote_amount} treatment quote. We offer flexible financing options to make it more affordable! Would you like to learn about our payment plans? Reply FINANCING for details or BOOK to schedule.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-stage1",
+      "name": "WhatsApp - Stage 1 (Day 3)",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 250]
+    },
+    {
+      "parameters": {},
+      "id": "wait-stage1",
+      "name": "Wait 2 Days",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 2,
+      "position": [1250, 250]
+    },
+    {
+      "parameters": {
+        "from": "={{ $env.WHATSAPP_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Hi ${$json.patient_name}, just checking in - are you still considering the treatment quote we provided? We have limited availability coming up. Let us know if you'd like to proceed or discuss alternatives. Reply YES to continue or NO thanks to close.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-stage2",
+      "name": "WhatsApp - Stage 2 (Day 5)",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "={{ `UPDATE quotes SET \n  followup_stage = followup_stage + 1,\n  last_followup_date = now(),\n  followup_count = COALESCE(followup_count, 0) + 1\nWHERE quote_id = ${$json.quote_id};` }}",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-update-stage",
+      "name": "Postgres - Update Follow-Up Stage",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1450, 250]
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "={{ `UPDATE quotes SET \n  status = 'closed',\n  followup_stage = 99,\n  closed_reason = 'max_followups_reached',\n  last_followup_date = now()\nWHERE quote_id = ${$json.quote_id};` }}",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-close-quote",
+      "name": "Postgres - Close Quote",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1450, 400]
+    },
+    {
+      "parameters": {},
+      "id": "no-quotes",
+      "name": "No Quotes Need Follow-Up",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 500]
+    },
+    {
+      "parameters": {},
+      "id": "log-followup",
+      "name": "Log Follow-Up Activity",
+      "type": "n8n-nodes-base.sentryIo",
+      "typeVersion": 1,
+      "position": [1650, 250]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - 9 AM": {
+      "main": [[{ "node": "Postgres - Get Considering Quotes", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Get Considering Quotes": {
+      "main": [[{ "node": "For Each Patient", "type": "main", "index": 0 }]]
+    },
+    "For Each Patient": {
+      "main": [[{ "node": "Check Follow-Up Stage", "type": "main", "index": 0 }]]
+    },
+    "Check Follow-Up Stage": {
+      "main": [
+        [
+          { "node": "WhatsApp - Stage 0 (Day 1)", "type": "main", "index": 0 },
+          { "node": "WhatsApp - Stage 1 (Day 3)", "type": "main", "index": 1 },
+          { "node": "WhatsApp - Stage 2 (Day 5)", "type": "main", "index": 2 }
+        ],
+        [{ "node": "No Quotes Need Follow-Up", "type": "main", "index": 0 }]
+      ]
+    },
+    "WhatsApp - Stage 0 (Day 1)": {
+      "main": [[{ "node": "Wait 2 Days", "type": "main", "index": 0 }]]
+    },
+    "Wait 2 Days": {
+      "main": [[{ "node": "Postgres - Update Follow-Up Stage", "type": "main", "index": 0 }]]
+    },
+    "WhatsApp - Stage 1 (Day 3)": {
+      "main": [[{ "node": "Wait 2 Days", "type": "main", "index": 1 }]]
+    },
+    "WhatsApp - Stage 2 (Day 5)": {
+      "main": [[{ "node": "Postgres - Close Quote", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Update Follow-Up Stage": {
+      "main": [[{ "node": "Log Follow-Up Activity", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Close Quote": {
+      "main": [[{ "node": "Log Follow-Up Activity", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "versionId": "1",
+  "active": true
+}
