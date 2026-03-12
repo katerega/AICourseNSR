@@ -1,0 +1,305 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "day",
+              "hoursInterval": 24,
+              "minutesInterval": 0
+            }
+          ]
+        }
+      },
+      "id": "cron-daily",
+      "name": "Daily Trigger - 10 AM",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [250, 300]
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "SELECT \n  pp.payment_plan_id,\n  pp.patient_id,\n  p.patient_name,\n  p.patient_phone,\n  pp.procedure_name,\n  pp.total_amount,\n  pp.balance_due,\n  pp.next_payment_due,\n  pp.next_payment_amount,\n  pp.payments_made,\n  pp.payments_missed,\n  pp.last_reminder_sent,\n  pp.clinic_id,\n  c.clinic_name,\n  c.payment_instructions,\n  -- Calculate days overdue\n  CASE \n    WHEN pp.next_payment_due < CURRENT_DATE \n    THEN CURRENT_DATE - pp.next_payment_due\n    ELSE 0 \n  END as days_overdue\nFROM payment_plans pp\nINNER JOIN patients p ON pp.patient_id = p.patient_id\nINNER JOIN clinics c ON pp.clinic_id = c.clinic_id\nWHERE pp.balance_due > 0\n  AND pp.status = 'active'\n  AND pp.next_payment_due <= CURRENT_DATE\n  AND (pp.last_reminder_sent IS NULL OR \n       pp.last_reminder_sent < CURRENT_DATE - INTERVAL '1 day')\nORDER BY pp.next_payment_due ASC, pp.clinic_id;",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-due-payments",
+      "name": "Postgres - Get Due Payments",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [450, 300]
+    },
+    {
+      "parameters": {},
+      "id": "for-each-payment",
+      "name": "For Each Due Payment",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 1,
+      "position": [650, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {},
+          "conditions": [
+            {
+              "id": "clinic-1",
+              "leftValue": "={{ $json.clinic_id }}",
+              "rightValue": "1",
+              "operator": {
+                "type": "equal",
+                "operation": "equal"
+              }
+            },
+            {
+              "id": "clinic-2",
+              "leftValue": "={{ $json.clinic_id }}",
+              "rightValue": "2",
+              "operator": {
+                "type": "equal",
+                "operation": "equal"
+              }
+            },
+            {
+              "id": "clinic-3",
+              "leftValue": "={{ $json.clinic_id }}",
+              "rightValue": "3",
+              "operator": {
+                "type": "equal",
+                "operation": "equal"
+              }
+            }
+          ]
+        }
+      },
+      "id": "switch-clinic",
+      "name": "Check Clinic ID",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [850, 200]
+    },
+    {
+      "parameters": {
+        "from": "{{ $env.WHATSAPP_CLINIC1_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Hi ${$json.patient_name}, your next installment of ${$json.next_payment_amount} UGX for ${$json.procedure_name} is due today. Please deposit to continue your treatment. Payment instructions: ${$json.payment_instructions}. Reply PAID once done.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-clinic1",
+      "name": "WhatsApp - Clinic 1 Reminder",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 100]
+    },
+    {
+      "parameters": {
+        "from": "{{ $env.WHATSAPP_CLINIC2_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Hello ${$json.patient_name}, reminder: Your payment of ${$json.next_payment_amount} UGX for ${$json.procedure_name} is due. Please make payment to avoid treatment delays. Clinic: ${$json.clinic_name}.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-clinic2",
+      "name": "WhatsApp - Clinic 2 Reminder",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1050, 250]
+    },
+    {
+      "parameters": {
+        "from": "{{ $env.SMS_CLINIC3_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Payment Due: ${$json.patient_name}, ${$json.next_payment_amount} UGX for ${$json.procedure_name}. Due date: ${$json.next_payment_due}. Balance: ${$json.balance_due} UGX.` }}",
+        "additionalFields": {}
+      },
+      "id": "sms-clinic3",
+      "name": "SMS - Clinic 3 Reminder",
+      "type": "n8n-nodes-base.twilioSms",
+      "typeVersion": 2,
+      "position": [1050, 400]
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "={{ `UPDATE payment_plans SET \n  last_reminder_sent = now(),\n  reminder_count = COALESCE(reminder_count, 0) + 1\nWHERE payment_plan_id = ${$json.payment_plan_id};` }}",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-update-reminder",
+      "name": "Postgres - Update Reminder Sent",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1250, 250]
+    },
+    {
+      "parameters": {
+        "connection": {
+          "ssl": false,
+          "sshTunnel": false,
+          "port": 5432,
+          "host": "{{ $env.DB_HOST }}",
+          "database": "{{ $env.DB_NAME }}",
+          "user": "{{ $env.DB_USER }}",
+          "password": "{{ $env.DB_PASSWORD }}"
+        },
+        "query": "={{ `INSERT INTO message_logs (\n  clinic_id,\n  patient_id,\n  message_type,\n  message_content,\n  recipient_phone,\n  sent_at,\n  status\n) VALUES (\n  ${$json.clinic_id},\n  ${$json.patient_id},\n  'payment_reminder',\n  '${$json.message_content}',\n  '${$json.patient_phone}',\n  now(),\n  'sent'\n);` }}",
+        "additionalFields": {},
+        "options": {}
+      },
+      "id": "postgres-log-message",
+      "name": "Postgres - Log Message",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [1250, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.days_overdue > 7 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-overdue-7days",
+      "name": "Check If Overdue >7 Days",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1450, 200]
+    },
+    {
+      "parameters": {
+        "from": "={{ $env.WHATSAPP_CLINIC1_NUMBER }}",
+        "to": "={{ $json.clinic_emergency_phone }}",
+        "message": "={{ `URGENT: Patient ${$json.patient_name} has payment overdue by ${$json.days_overdue} days. Amount: ${$json.next_payment_amount} UGX. Phone: ${$json.patient_phone}.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-staff-alert",
+      "name": "WhatsApp - Staff Alert",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1650, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.balance_due - $json.next_payment_amount <= 0 }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "if-final-payment",
+      "name": "Check If Final Payment",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [1450, 350]
+    },
+    {
+      "parameters": {
+        "from": "={{ $env.WHATSAPP_CLINIC1_NUMBER }}",
+        "to": "={{ $json.patient_phone }}",
+        "message": "={{ `Great news ${$json.patient_name}! After this payment of ${$json.next_payment_amount} UGX, your ${$json.procedure_name} will be fully paid. Please complete payment to schedule your final appointment.` }}",
+        "additionalFields": {}
+      },
+      "id": "whatsapp-final-notice",
+      "name": "WhatsApp - Final Payment Notice",
+      "type": "n8n-nodes-base.whatsApp",
+      "typeVersion": 1,
+      "position": [1650, 300]
+    },
+    {
+      "parameters": {},
+      "id": "webhook-fully-paid",
+      "name": "Webhook - Trigger Fully Paid",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1.1,
+      "webhookId": "fully-paid-trigger",
+      "position": [1850, 300]
+    },
+    {
+      "parameters": {},
+      "id": "no-due-payments",
+      "name": "No Due Payments Today",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [850, 500]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - 10 AM": {
+      "main": [[{ "node": "Postgres - Get Due Payments", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Get Due Payments": {
+      "main": [[{ "node": "For Each Due Payment", "type": "main", "index": 0 }]]
+    },
+    "For Each Due Payment": {
+      "main": [[{ "node": "Check Clinic ID", "type": "main", "index": 0 }]]
+    },
+    "Check Clinic ID": {
+      "main": [
+        [
+          { "node": "WhatsApp - Clinic 1 Reminder", "type": "main", "index": 0 },
+          { "node": "WhatsApp - Clinic 2 Reminder", "type": "main", "index": 1 },
+          { "node": "SMS - Clinic 3 Reminder", "type": "main", "index": 2 }
+        ],
+        [{ "node": "No Due Payments Today", "type": "main", "index": 0 }]
+      ]
+    },
+    "WhatsApp - Clinic 1 Reminder": {
+      "main": [[{ "node": "Postgres - Update Reminder Sent", "type": "main", "index": 0 }]]
+    },
+    "WhatsApp - Clinic 2 Reminder": {
+      "main": [[{ "node": "Postgres - Update Reminder Sent", "type": "main", "index": 0 }]]
+    },
+    "SMS - Clinic 3 Reminder": {
+      "main": [[{ "node": "Postgres - Update Reminder Sent", "type": "main", "index": 0 }]]
+    },
+    "Postgres - Update Reminder Sent": {
+      "main": [
+        [{ "node": "Postgres - Log Message", "type": "main", "index": 0 }],
+        [{ "node": "Check If Overdue >7 Days", "type": "main", "index": 0 }],
+        [{ "node": "Check If Final Payment", "type": "main", "index": 0 }]
+      ]
+    },
+    "Check If Overdue >7 Days": {
+      "main": [
+        [{ "node": "WhatsApp - Staff Alert", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "Check If Final Payment": {
+      "main": [
+        [{ "node": "WhatsApp - Final Payment Notice", "type": "main", "index": 0 }],
+        []
+      ]
+    },
+    "WhatsApp - Final Payment Notice": {
+      "main": [[{ "node": "Webhook - Trigger Fully Paid", "type": "main", "index": 0 }]]
+    }
+  },
+  "pinData": {},
+  "versionId": "1",
+  "active": true
+}

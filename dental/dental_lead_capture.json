@@ -1,0 +1,106 @@
+{
+  "name": "Dental Lead Capture",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "lead-capture",
+        "method": "POST",
+        "responseMode": "lastNode",
+        "responseData": "allEntries",
+        "options": {}
+      },
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            { "name": "full_name", "value": "={{$json[\"full_name\"]}}" },
+            { "name": "phone", "value": "={{$json[\"phone\"].replace(/\\D/g,'')}}" },
+            { "name": "procedure_interest", "value": "={{$json[\"procedure_interest\"]}}" },
+            { "name": "source", "value": "={{$json[\"source\"]}}" },
+            { "name": "clinic_id", "value": "={{$json[\"clinic_id\"]}}" },
+            { "name": "status", "value": "new" }
+          ]
+        }
+      },
+      "name": "Set Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM patients WHERE phone = {{$json[\"phone\"]}} AND clinic_id = {{$json[\"clinic_id\"]}};"
+      },
+      "name": "Check Existing Patient",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [600, 200],
+      "credentials": { "postgres": "YOUR_POSTGRES_CREDENTIALS" }
+    },
+    {
+      "parameters": {
+        "rules": [
+          {
+            "value1": "={{$json.length}}",
+            "operation": "equal",
+            "value2": 0
+          }
+        ]
+      },
+      "name": "IF Patient Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [800, 200]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "table": "patients",
+        "columns": ["clinic_id", "full_name", "phone", "procedure_interest", "status"],
+        "values": [
+          "={{$json[\"clinic_id\"]}}",
+          "={{$json[\"full_name\"]}}",
+          "={{$json[\"phone\"]}}",
+          "={{$json[\"procedure_interest\"]}}",
+          "={{$json[\"status\"]}}"
+        ]
+      },
+      "name": "Create Patient",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [1000, 200],
+      "credentials": { "postgres": "YOUR_POSTGRES_CREDENTIALS" }
+    },
+    {
+      "parameters": {
+        "toNumber": "={{$json[\"phone\"]}}",
+        "message": "Hi {{$json[\"full_name\"]}}, welcome to {{clinic_name}}! We will contact you shortly to schedule your consultation.",
+        "options": {}
+      },
+      "name": "Send WhatsApp",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [1200, 200],
+      "credentials": { "twilioApi": "YOUR_TWILIO_CREDENTIALS" }
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{"node": "Set Data","type": "main","index": 0}]] },
+    "Set Data": { "main": [[{"node": "Check Existing Patient","type": "main","index": 0}]] },
+    "Check Existing Patient": { "main": [[{"node": "IF Patient Exists?","type": "main","index": 0}]] },
+    "IF Patient Exists?": {
+      "main": [
+        [
+          {"node": "Create Patient","type": "main","index": 0}
+        ]
+      ]
+    },
+    "Create Patient": { "main": [[{"node": "Send WhatsApp","type": "main","index": 0}]] }
+  }
+}
